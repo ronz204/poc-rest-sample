@@ -1,1 +1,1 @@
-### CliniQ | Health Level Seven
+### CliniQ HL7
