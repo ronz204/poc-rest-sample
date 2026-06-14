@@ -1,1 +1,1 @@
-### CliniQ HL7
+#### REST Api Sample | POC
