@@ -103,9 +103,70 @@ Cliente                            Servidor
 
 Con 2 pasos el cliente sabe que el servidor lo escucha, pero el servidor no sabe si el cliente recibió su respuesta (el canal de retorno puede estar roto). El tercer paso confirma que **ambos canales, ida y vuelta, funcionan**.
 
+### TCP + TLS juntos (lo que pasa realmente con HTTPS)
+
+El 3-way handshake solo establece la conexión de red. Si el sitio usa HTTPS (que hoy es prácticamente todo), **después** viene el TLS handshake encima. Son dos negociaciones separadas y secuenciales.
+
+```
+Cliente                                        Servidor
+  │                                                │
+  │  ── TCP ──────────────────────────────────     │
+  │                                                │
+  │──── SYN ──────────────────────────────────────▶│
+  │◀─── SYN-ACK ───────────────────────────────────│
+  │──── ACK ──────────────────────────────────────▶│
+  │                                                │
+  │  ── TLS ──────────────────────────────────     │
+  │                                                │
+  │──── ClientHello ──────────────────────────────▶│  versiones TLS, cipher suites
+  │◀─── ServerHello + Certificado ─────────────────│  elige parámetros, envía cert
+  │                                                │
+  │  [verifica el certificado contra CA conocida]  │
+  │  [genera secreto, lo cifra con clave pública]  │
+  │                                                │
+  │──── secreto cifrado + Finished ───────────────▶│
+  │◀─── Finished ──────────────────────────────────│  ambos derivan la clave de sesión
+  │                                                │
+  │  ── HTTP ─────────────────────────────────     │
+  │                                                │
+  │══════════ GET /index.html (cifrado) ══════════▶│
+  │◀═════════ 200 OK + contenido (cifrado) ════════│
+```
+
+**El costo en tiempo:**
+
+Cada flecha de ida y vuelta es un **RTT** (Round Trip Time). En una conexión HTTPS con HTTP/1.1 o HTTP/2:
+
+```
+TCP 3-Way Handshake  →  1 RTT   (SYN / SYN-ACK / ACK)
+TLS 1.2 Handshake    →  2 RTT   (dos intercambios antes de poder enviar datos)
+TLS 1.3 Handshake    →  1 RTT   (optimizado, un solo intercambio)
+─────────────────────────────────
+Total TLS 1.2        →  3 RTT antes del primer byte de datos
+Total TLS 1.3        →  2 RTT antes del primer byte de datos
+```
+
+En una conexión con 50ms de latencia, esos 2 RTT son 100ms que el usuario espera antes de ver cualquier cosa. Por eso la optimización importa.
+
 ### ¿Por qué HTTP/3 elimina esto?
 
-QUIC sobre UDP rediseña el handshake combinándolo con TLS 1.3 en **1 RTT**. No hay un 3-way handshake TCP separado; la conexión y la negociación de seguridad ocurren al mismo tiempo.
+QUIC sobre UDP fusiona los dos handshakes en uno solo. La conexión de red y la negociación TLS 1.3 ocurren en el **mismo intercambio**:
+
+```
+Cliente                                        Servidor
+  │                                                │
+  │──── QUIC Initial (crypto TLS incluido) ───────▶│
+  │◀─── QUIC Response (crypto TLS incluido) ────────│
+  │                                                │
+  │══════════ datos HTTP (cifrados) ══════════════▶│
+```
+
+```
+QUIC + TLS 1.3   →  1 RTT   (todo en un solo intercambio)
+0-RTT            →  0 RTT   (en reconexiones a servidores conocidos)
+```
+
+No hay TCP. No hay dos fases. La conexión y la seguridad son una sola cosa.
 
 ---
 
