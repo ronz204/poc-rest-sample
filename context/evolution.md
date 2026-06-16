@@ -60,6 +60,76 @@ HTTP/3    ─── QUIC (sobre UDP) ──────────────�
 | **Sin HOL Blocking** | Si se pierde un paquete de la imagen #5, las otras 19 imágenes siguen descargándose. Solo se pausa el stream afectado. |
 | **TLS 1.3 integrado** | La seguridad es parte del protocolo, no una capa encima. Handshake en **1 RTT**: conectar y transferir ocurre en el mismo viaje. |
 | **Connection Migration** | Si cambias de Wi-Fi a datos móviles, la conexión no se corta ni se renegocia. QUIC identifica la conexión por un ID, no por IP:puerto. |
+| **QPACK** | Reemplaza a HPACK para comprimir headers sin introducir HOL Blocking. |
+| **0-RTT** | En reconexiones a servidores ya conocidos, el cliente puede enviar datos en el primer paquete, sin esperar ningún handshake. |
+
+---
+
+### QPACK — La evolución de HPACK
+
+HTTP/2 introdujo **HPACK** para comprimir headers. Funcionaba bien, pero tenía un problema de diseño: usaba una tabla compartida y ordenada entre cliente y servidor. Si un paquete con una actualización de esa tabla se perdía, **todos los streams tenían que esperar** a que se recuperara antes de poder decodificar sus headers. HOL Blocking otra vez, ahora en la capa de compresión.
+
+**QPACK** resuelve esto con una estrategia distinta: separa los headers en dos categorías.
+
+```
+Headers estáticos   →  tabla fija predefinida (62 entradas comunes)
+                        ej: :method GET, content-type application/json
+                        nunca cambian, nunca bloquean
+
+Headers dinámicos   →  tabla dinámica, pero cada stream lleva
+                        referencia explícita a qué versión usa
+                        si se pierde un paquete, solo ese stream espera
+```
+
+El resultado: un stream puede decodificar sus headers incluso si otro stream perdió un paquete y está esperando actualizaciones de la tabla dinámica. Cada stream es completamente independiente.
+
+---
+
+### 0-RTT — Cero viajes de ida y vuelta
+
+En una conexión TLS normal, incluso con TLS 1.3, el primer request requiere al menos **1 RTT** de handshake antes de poder enviar datos. 0-RTT elimina ese costo en reconexiones.
+
+**Cómo funciona:**
+
+La primera vez que te conectás a un servidor, TLS guarda localmente un **Session Ticket**: un token cifrado que el servidor te entrega al final del handshake, que contiene material criptográfico para reanudar la sesión más adelante.
+
+```
+Primera conexión (1 RTT normal):
+
+cliente                          servidor
+  │── ClientHello ──────────────▶│
+  │◀── ServerHello + Session ────│
+  │    Ticket                    │
+  │── Finished ─────────────────▶│
+  │◀══ datos ════════════════════│
+
+
+Reconexión con 0-RTT:
+
+cliente                          servidor
+  │── ClientHello                │
+  │   + Session Ticket           │
+  │   + datos del request ──────▶│  ← datos viajan en el primer paquete
+  │◀══ respuesta ════════════════│
+```
+
+El cliente adjunta el Session Ticket y los datos del primer request en el mismo paquete inicial. El servidor puede procesarlo sin ningún intercambio previo.
+
+**La desventaja: Replay Attacks**
+
+0-RTT tiene un problema de seguridad inherente. Si un atacante captura ese primer paquete (ClientHello + datos), puede **reenviarlo** al servidor cuantas veces quiera. El servidor no tiene forma de distinguir si ese paquete lo está enviando el cliente legítimo o un atacante que lo copió.
+
+Por eso, **0-RTT solo es seguro para operaciones idempotentes**: requests que producen el mismo resultado sin importar cuántas veces se ejecuten.
+
+```
+✅ seguro con 0-RTT     GET /productos          (leer datos, idempotente)
+✅ seguro con 0-RTT     GET /perfil             (leer datos, idempotente)
+
+❌ nunca usar 0-RTT     POST /pago              (crear un cobro, no idempotente)
+❌ nunca usar 0-RTT     POST /transferencia     (mover dinero, no idempotente)
+```
+
+En la práctica, los servidores bien configurados limitan 0-RTT a GETs y rechazan métodos no idempotentes en ese modo.
 
 ---
 
@@ -73,7 +143,8 @@ HTTP/3    ─── QUIC (sobre UDP) ──────────────�
 | **Conexiones por servidor** | Hasta 6 paralelas | 1 | 1 |
 | **HOL Blocking** | Sí, aplicación | Sí, transporte | No |
 | **TLS** | Opcional | Obligatorio en navegadores | Integrado, obligatorio |
-| **Handshake latencia** | TCP + TLS separados | TCP + TLS separados | 1 RTT combinado |
+| **Handshake latencia** | TCP + TLS separados | TCP + TLS separados | 1 RTT / 0-RTT en reconexión |
+| **Compresión de headers** | Ninguna | HPACK | QPACK (sin HOL Blocking) |
 
 ---
 
