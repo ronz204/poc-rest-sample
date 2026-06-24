@@ -1,0 +1,15 @@
+FROM oven/bun:1.3.14-slim AS base
+WORKDIR /usr/src/api
+
+# === Dependencies Stage ===
+FROM base AS dependencies
+COPY package.json bun.lock ./
+RUN bun ci
+
+# === Development Stage ===
+FROM dependencies AS development
+COPY --chown=bun:bun . .
+USER bun
+
+EXPOSE 3000
+CMD ["bun", "run", "start:dev"]

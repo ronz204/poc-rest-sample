@@ -1,0 +1,42 @@
+name: hexagon
+
+services:
+  storage: # === Hexagon Storage
+    env_file: .env.local
+    container_name: storage
+    image: postgres:18.4-alpine
+    networks:
+      - hexagon-network
+    volumes:
+      - hexagon-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      start_period: 15s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  service: # === Hexagon Service
+    build:
+      context: .
+      target: development
+      dockerfile: dockerfile
+    container_name: service
+    env_file: .env.local
+    networks:
+      - hexagon-network
+    depends_on:
+      storage:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  hexagon-data:
+    driver: local
+    name: hexagon-data
+
+networks:
+  hexagon-network:
+    driver: bridge
+    name: hexagon-network
