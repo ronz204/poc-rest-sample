@@ -1,14 +1,18 @@
 {
-  "name": "api",
+  "name": "hexagon-api",
   "module": "./source/boot.ts",
   "type": "module",
   "private": true,
   "scripts": {
+    "start:prod": "bun ./source/boot.ts",
     "start:dev": "bun --hot ./source/boot.ts",
-    "start:prod": "bun ./source/boot.ts"
+    "prisma:generate": "bunx --bun prisma generate",
+    "prisma:migrate": "bunx --bun prisma migrate deploy"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/pg": "^8.20.0",
+    "prisma": "^7.8.0"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -16,7 +20,10 @@
   "dependencies": {
     "@elysia/cors": "^1.4.2",
     "@elysia/openapi": "^1.4.15",
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
     "elysia": "^1.4.29",
+    "pg": "^8.22.0",
     "zod": "^4.4.3"
   }
 }
