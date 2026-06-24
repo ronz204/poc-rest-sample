@@ -12,6 +12,7 @@ const envSchema = z.object({
   // Postgres Config
   // ==========================================
   POSTGRES_DB: z.string(),
+  POSTGRES_URL: z.string(),
   POSTGRES_HOST: z.string(),
   POSTGRES_SCHEMA: z.string(),
   POSTGRES_PORT: z.string().transform((val) => parseInt(val, 10)).default(5432),
