@@ -1,14 +1,14 @@
 import { env } from "@env";
 import { Elysia } from "elysia";
 
-import { ScalarExtension } from "@infra/extensions/scalar.extension";
-import { HealthExtension } from "@infra/extensions/health.extension";
-import { OriginsExtension } from "@infra/extensions/origins.extension";
+import { ScalarPlugin } from "@plugins/scalar.plugin";
+import { HealthPlugin } from "@plugins/health.plugin";
+import { OriginsPlugin } from "@plugins/origins.plugin";
 
 const app = new Elysia({ prefix: "/api" })
-  .use(OriginsExtension)
-  .use(HealthExtension)
-  .use(ScalarExtension)
+  .use(OriginsPlugin)
+  .use(ScalarPlugin)
+  .use(HealthPlugin)
   .listen(env.APP_PORT);
 
 const url = `http://${app.server?.hostname}:${app.server?.port}`;
