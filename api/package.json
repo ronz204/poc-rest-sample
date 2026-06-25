@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@elysia/cors": "^1.4.2",
+    "@elysia/jwt": "^1.4.2",
     "@elysia/openapi": "^1.4.15",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
