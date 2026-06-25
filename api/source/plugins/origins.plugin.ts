@@ -1,5 +1,5 @@
 import { env } from "@env";
-import cors from "@elysia/cors";
+import { cors } from "@elysia/cors";
 
 export const OriginsPlugin = cors({
   origin: env.CORS_ORIGIN,

@@ -1,5 +1,5 @@
 import { env } from "@env";
-import openapi from "@elysia/openapi";
+import { openapi } from "@elysia/openapi";
 
 export const ScalarPlugin = openapi({
   path: "/docs",
