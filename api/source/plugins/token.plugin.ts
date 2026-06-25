@@ -1,10 +1,10 @@
 import { env } from "@env";
-import { Elysia } from "elysia";
 import { jwt } from "@elysia/jwt";
 
-export const TokenPlugin = new Elysia({ name: "token.plugin" })
-  .use(jwt({
-    name: "jwt",
-    exp: env.ACCESS_TTL,
-    secret: env.SECRET_KEY,
-  }));
+export const TokenPlugin = jwt({
+  name: "token.plugin",
+  exp: env.ACCESS_TTL,
+  iss: env.APP_DOMAIN,
+  aud: env.APP_AUDIENCE,
+  secret: env.SECRET_KEY,
+});

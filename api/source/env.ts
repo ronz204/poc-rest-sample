@@ -6,6 +6,8 @@ const envSchema = z.object({
   // ==========================================
   APP_VERSION: z.string().default("1.0.0"),
   APP_NAME: z.string().default("Hexagon Service"),
+  APP_DOMAIN: z.string().default("api.hexagon.com"),
+  APP_AUDIENCE: z.string().default("hexagon.com"),
   APP_PORT: z.string().transform((val) => parseInt(val, 10)).default(3000),
 
   // ==========================================
