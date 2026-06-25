@@ -6,8 +6,20 @@ FROM base AS dependencies
 COPY package.json bun.lock ./
 RUN bun ci
 
+# === Building Stage ===
+FROM dependencies AS building
+COPY --chown=bun:bun prisma/ ./prisma/
+COPY --chown=bun:bun prisma.config.ts ./
+
+ENV POSTGRES_URL="postgresql://dummy:dummy@localhost:5432/dummy"
+RUN bun run prisma:generate
+
+# === Migrations Stage ===
+FROM building AS migrations
+CMD ["bun", "run", "prisma:migrate"]
+
 # === Development Stage ===
-FROM dependencies AS development
+FROM building AS development
 COPY --chown=bun:bun . .
 USER bun
 
