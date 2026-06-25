@@ -17,6 +17,20 @@ services:
       retries: 5
     restart: unless-stopped
 
+  migrate: # === Hexagon Migrate
+    build:
+      context: .
+      target: migrations
+      dockerfile: dockerfile
+    container_name: migrate
+    env_file: .env.local
+    networks:
+      - hexagon-network
+    depends_on:
+      storage:
+        condition: service_healthy
+    restart: on-failure
+
   service: # === Hexagon Service
     build:
       context: .
