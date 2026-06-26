@@ -5,6 +5,8 @@ services:
     env_file: .env.local
     container_name: storage
     image: postgres:18.4-alpine
+    ports:
+      - "5432:5432"
     networks:
       - hexagon-network
     volumes:
@@ -38,6 +40,8 @@ services:
       dockerfile: dockerfile
     container_name: service
     env_file: .env.local
+    ports:
+      - "3000:3000"
     networks:
       - hexagon-network
     depends_on:
