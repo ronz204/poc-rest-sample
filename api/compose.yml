@@ -1,7 +1,7 @@
 name: hexagon
 
 services:
-  storage: # === Hexagon Storage
+  storage:
     env_file: .env.local
     container_name: storage
     image: postgres:18.4-alpine
@@ -19,7 +19,7 @@ services:
       retries: 5
     restart: unless-stopped
 
-  migrate: # === Hexagon Migrate
+  migrate:
     build:
       context: .
       target: migrations
@@ -33,7 +33,7 @@ services:
         condition: service_healthy
     restart: on-failure
 
-  service: # === Hexagon Service
+  service:
     build:
       context: .
       target: development
