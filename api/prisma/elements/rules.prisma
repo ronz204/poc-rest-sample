@@ -1,0 +1,34 @@
+enum RuleKind {
+  attribute
+  segment
+  percentage
+
+  @@schema("engine")
+}
+
+enum RuleOutcome {
+  active
+  inactive
+
+  @@schema("engine")
+}
+
+model Rule {
+  id        String @id @default(uuid()) @db.Uuid
+  position  Int
+  condition Json
+
+  kind    RuleKind
+  outcome RuleOutcome
+
+  flagId String @db.Uuid
+  flag   Flag   @relation(fields: [flagId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([flagId, position])
+  @@index([flagId, position])
+  @@map("rules")
+  @@schema("engine")
+}
