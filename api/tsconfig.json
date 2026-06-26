@@ -37,9 +37,7 @@
       "@common/*": ["./source/common/*"],
       "@plugins/*": ["./source/plugins/*"],
       "@prisma/*": ["./prisma/generated/*"],
-      
       "@features/*": ["./source/features/*"],
-      "@security/*": ["./source/security/*"],
     },
   }
 }
