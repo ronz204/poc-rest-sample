@@ -2,7 +2,7 @@ name: hexagon
 
 services:
   storage:
-    env_file: .env.local
+    env_file: .env.dev
     container_name: storage
     image: postgres:18.4-alpine
     ports:
@@ -25,7 +25,7 @@ services:
       target: migrations
       dockerfile: dockerfile
     container_name: migrate
-    env_file: .env.local
+    env_file: .env.dev
     networks:
       - hexagon-network
     depends_on:
@@ -39,7 +39,7 @@ services:
       target: development
       dockerfile: dockerfile
     container_name: service
-    env_file: .env.local
+    env_file: .env.dev
     ports:
       - "3000:3000"
     networks:
