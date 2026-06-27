@@ -1,20 +1,14 @@
-enum RuleOutcome {
-  on
-  off
-  rollout
-
-  @@schema("engine")
-}
-
 model Flag {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  key         String   @unique @db.VarChar(100)
-  name        String   @db.VarChar(255)
-  description String?  @db.Text
-  enabled     Boolean  @default(false)
-  default     Boolean  @default(false)
-  createdAt   DateTime @default(now()) @db.Timestamptz()
-  updatedAt   DateTime @updatedAt @db.Timestamptz()
+  id    String @id @default(uuid()) @db.Uuid
+  key   String @unique @db.VarChar(100)
+  name  String @db.VarChar(100)
+  short String @db.VarChar(200)
+
+  enabled Boolean @default(false)
+  default Boolean @default(false)
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
   rules Rule[]
 
@@ -22,34 +16,55 @@ model Flag {
   @@schema("engine")
 }
 
-model Segment {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  key        String   @unique @db.VarChar(100)
-  name       String   @db.VarChar(255)
-  conditions Json
-  createdAt  DateTime @default(now()) @db.Timestamptz()
-  updatedAt  DateTime @updatedAt @db.Timestamptz()
+model Rule {
+  id        String @id @default(uuid()) @db.Uuid
+  flagId    String @db.Uuid
+  segmentId String @db.Uuid
 
-  rules Rule[]
+  priority Int     @db.Integer
+  outcome  Boolean @db.Boolean
+  rollout  Int?    @default(100) @db.SmallInt
+
+  segment Segment @relation(fields: [segmentId], references: [id])
+  flag    Flag    @relation(fields: [flagId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  @@index([flagId, priority])
+  @@map("rules")
+  @@schema("engine")
+}
+
+model Segment {
+  id   String @id @default(uuid()) @db.Uuid
+  key  String @unique @db.VarChar(100)
+  name String @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  rules      Rule[]
+  conditions Condition[]
 
   @@map("segments")
   @@schema("engine")
 }
 
-model Rule {
-  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  flagId     String      @db.Uuid
-  segmentId  String?     @db.Uuid
-  priority   Int
-  conditions Json?
-  outcome    RuleOutcome
-  rollout    Int?        @db.SmallInt
-  createdAt  DateTime    @default(now()) @db.Timestamptz()
+model Condition {
+  id        String @id @default(uuid()) @db.Uuid
+  segmentId String @db.Uuid
 
-  flag    Flag     @relation(fields: [flagId], references: [id], onDelete: Cascade)
-  segment Segment? @relation(fields: [segmentId], references: [id], onDelete: SetNull)
+  attribute String @db.VarChar(50)
+  operator  String @db.VarChar(20)
+  value     Json   @db.JsonB
 
-  @@index([flagId, priority])
-  @@map("rules")
+  segment Segment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  @@index([segmentId])
+  @@map("conditions")
   @@schema("engine")
 }

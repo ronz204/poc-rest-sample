@@ -2,118 +2,159 @@
 
 ## Punto de partida: ¿qué se persiste y qué no?
 
-Antes de escribir una sola tabla, hay una distinción importante que viene directo de `concepts.md`: el **contexto de evaluación** (los atributos del usuario que pregunta) **no se persiste**. Es información transitoria que el cliente manda en cada request — no existe una tabla `contexts`. Lo que sí se persiste es todo lo que define *cómo* evaluar ese contexto: flags, reglas y segmentos.
+Antes de escribir una sola tabla, hay una distinción importante que viene directo de `concepts.md`: el **contexto de evaluación** (los atributos del usuario que pregunta) **no se persiste**. Es información transitoria que el cliente manda en cada request — no existe una tabla `contexts`. Lo que sí se persiste es todo lo que define *cómo* evaluar ese contexto: flags, reglas, segmentos y condiciones.
 
 Esto importa porque es fácil caer en la trampa de querer modelar "usuarios" como entidad propia del motor de flags. No lo son. El motor no sabe quién es un usuario más allá de los atributos que le llegan en el momento de evaluar.
 
 ## Decisiones de modelado (el por qué antes del cómo)
 
-### 1. Las condiciones de una regla viven en JSONB, no en columnas rígidas
+### 1. Toda condición vive en `Segment`, nunca directo en `Rule`
 
-Una condición puede tener formas distintas:
+La primera tentación al modelar esto es dejar que una regla cargue su propia condición (`attribute`/`operator`/`value` directo en `rules`), y que el segmento sea un atajo opcional para condiciones reusables. Ese camino se descartó a propósito: si `Rule` puede tener condición propia *o* segmento, queda una ambigüedad que ni la base de datos puede resolver sola (¿qué pasa si una fila tiene ambos? ¿o ninguno?). Resolverlo con un `CHECK` constraint es posible, pero es exactamente el tipo de caso especial que conviene eliminar del modelo en vez de validar después.
+
+La solución: **toda regla referencia un segmento, sin excepción** — incluso una condición "simple" (`country == "CR"`) es, en este modelo, un segmento con una sola condición. Esto deja a `Rule` con una responsabilidad única y sin ambigüedad: decidir el orden y el resultado, no la condición en sí.
+
+Una consecuencia directa de esto: una regla que debe aplicar a "todos los usuarios, sin condición" (por ejemplo, para representar el caso de un rollout puro sin segmentación) se modela como una referencia a un `Segment` que simplemente no tiene ninguna `Condition` asociada. El motor de evaluación trata "segmento sin condiciones" como "siempre matchea" — es un caso a tener en cuenta al implementar la función de evaluación, no un caso especial en el schema.
+
+### 2. Las condiciones son su propia tabla, no JSONB suelto
+
+Una condición individual (`attribute`, `operator`, `value`) tiene una forma fija y predecible — no varía de campo a campo, lo cual es justo la señal de que NO conviene usar JSONB para la condición completa. Modelarla como tabla (`Condition`) en vez de un array en una columna JSON del segmento da:
+
+- Integridad garantizada por la base (cada condición siempre tiene sus tres campos, con sus tipos).
+- Queries simples (`WHERE attribute = 'country'`) sin operadores JSONB especiales.
+- Posibilidad de evolucionar cada condición de forma independiente (ej. deshabilitarla, auditarla) sin reescribir un blob completo.
+
+Donde **sí** entra JSON es en el campo `value` de la condición — no en la condición como conjunto. La razón: la forma de `value` varía genuinamente según el `operator`. Un `equals` necesita un string; un `in` necesita un array; un eventual `between` necesitaría un objeto `{min, max}`. Esa es la variabilidad estructural real que justifica JSONB, a diferencia de la condición completa, que no varía de forma.
 
 ```
-country == "CR"
-plan IN ["premium", "enterprise"]
-country == "CR" AND plan == "premium"
+operator: "equals"   → value: "CR"
+operator: "in"        → value: ["CR", "MX", "PA"]
+operator: "between"   → value: { "min": 18, "max": 65 }
 ```
 
-Si tratara de modelar esto con columnas fijas (`attribute`, `operator`, `value`), me quedaría corto en cuanto aparezca una condición compuesta (AND de dos atributos) o un operador distinto (`IN` vs `==`). La estructura *varía de forma* — y esa es la señal de que JSONB es la herramienta correcta, en vez de forzar una tabla rígida o, peor, una tabla `rule_conditions` separada con su propio mini-modelo relacional.
+La validación de que la forma de `value` sea coherente con el `operator` es responsabilidad de la capa de aplicación — Postgres no puede garantizar "si operator = between, entonces value debe tener min y max" solo con el tipo de columna.
 
-Lo que **sí** es rígido y vive en columnas normales: a qué flag pertenece la regla, en qué orden se evalúa, y cuál es su resultado. Eso no cambia de forma nunca, así que no tiene sentido meterlo en JSON.
+### 3. El resultado de una regla es `outcome` (booleano) + `rollout` (porcentaje opcional), no un ENUM de 3 valores
 
-### 2. El rollout porcentual no es una tabla aparte — es el "resultado" de una regla
+La primera versión de este modelo usó un ENUM `on | off | rollout` para el resultado de una regla. Se descartó porque mezclaba dos preguntas distintas en un solo campo: *qué responder* y *a qué fracción de los que matchean aplicárselo*. Un ENUM de 3 valores no puede expresar, por ejemplo, "activa para el 10% de los que matchean, y desactiva explícitamente al resto" — necesitarías reglas adicionales para cubrir ese caso, cuando en realidad es la misma pregunta de "qué % recibe este resultado".
 
-En `concepts.md` establecimos que una regla tiene una condición y un resultado, y que el resultado puede ser `true`/`false` directo o "activar para el X% de los usuarios". Modelarlo como un tipo de resultado (con una columna `rollout_percentage` opcional) evita crear una tabla `rollouts` separada que terminaría siendo casi un duplicado de `rules`.
+El modelo correcto separa ambas preguntas en dos campos independientes:
 
-### 3. Los segmentos son su propia tabla, con su propio JSONB de condiciones
+- `outcome: Boolean` — qué responder si la regla matchea (true/false).
+- `rollout: SmallInt?` — qué porcentaje de los que matchean recibe ese `outcome`. `NULL` (o 100) significa "todos los que matchean".
 
-Un segmento es una condición reusable con nombre. Estructuralmente es muy parecido a una regla (también tiene una condición en JSONB), pero conceptualmente es distinto: una regla pertenece a un flag específico; un segmento es independiente y varios flags lo pueden referenciar. Por eso es tabla separada, y las reglas lo referencian por FK cuando aplica.
+Esto es estructuralmente más simple que el ENUM, y cubre el caso de rollout sin necesitar un tercer estado.
 
 ### 4. El orden de evaluación necesita una columna explícita
 
-Como la evaluación es secuencial (primera regla que matchea, gana — ver `concepts.md`), no puedo confiar en el orden de inserción ni en el `id` autoincremental. Si alguien reordena las reglas de un flag después de creadas, el orden de evaluación tiene que reflejar eso. Por eso `priority` es una columna explícita, no un efecto secundario del ID.
+Como la evaluación es secuencial y usa short-circuit (primera regla que matchea, gana — ver `concepts.md`), no se puede confiar en el orden de inserción ni en el `id`. Si alguien reordena las reglas de un flag después de creadas, el orden de evaluación tiene que reflejar eso. Por eso `priority` es una columna explícita (`Int`), no un efecto secundario del ID o del `createdAt`.
 
-### 5. ENUM para el tipo de resultado, no strings sueltos
+### 5. Relaciones de composición vs. asociación, y sus reglas de borrado
 
-El resultado de una regla puede ser: `on` (activar directo), `off` (desactivar directo), o `rollout` (porcentaje). Usar un `ENUM` en vez de un string libre evita que se cuelen valores inválidos como `"actvo"` por un typo, y deja explícito en el schema mismo cuáles son los únicos resultados posibles.
+No todas las relaciones del modelo significan lo mismo, y eso se refleja en el comportamiento de borrado (`onDelete`):
 
-## Schema
+| Relación | Tipo | Comportamiento |
+|---|---|---|
+| `Flag → Rule` | Composición | `CASCADE` — si se borra el flag, sus reglas no tienen sentido sin él |
+| `Rule → Segment` | Asociación | Sin cascade — el segmento es independiente, puede usarlo otra regla de otro flag |
+| `Segment → Condition` | Composición | `CASCADE` — una condición no significa nada fuera de su segmento |
 
-```sql
--- Tipo de resultado que puede tener una regla
-CREATE TYPE rule_outcome AS ENUM ('on', 'off', 'rollout');
+La intuición detrás de esta distinción: composición es "no existe sin su padre" (regla sin flag, condición sin segmento); asociación es "préstamo entre iguales" (una regla usa un segmento, pero ninguno es dueño del otro).
 
--- Flags: la unidad fundamental
-CREATE TABLE flags (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    key             VARCHAR(100) NOT NULL UNIQUE,  -- ej: "new-checkout"
-    name            VARCHAR(255) NOT NULL,
-    description     TEXT,
-    enabled         BOOLEAN NOT NULL DEFAULT false, -- kill switch global
-    default_outcome BOOLEAN NOT NULL DEFAULT false, -- si ninguna regla matchea
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+## Schema (Prisma)
 
--- Segmentos: condiciones reusables con nombre
-CREATE TABLE segments (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    key         VARCHAR(100) NOT NULL UNIQUE,  -- ej: "clientes-premium-cr"
-    name        VARCHAR(255) NOT NULL,
-    conditions  JSONB NOT NULL,  -- ver "Forma del JSONB" abajo
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+```prisma
+model Flag {
+  id    String @id @db.Uuid
+  key   String @unique @db.VarChar(100)
+  name  String @db.VarChar(100)
+  short String @db.VarChar(200)
 
--- Reglas: pertenecen a un flag, se evalúan en orden
-CREATE TABLE rules (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    flag_id             UUID NOT NULL REFERENCES flags(id) ON DELETE CASCADE,
-    segment_id          UUID REFERENCES segments(id) ON DELETE SET NULL, -- opcional
-    priority            INT NOT NULL,           -- orden de evaluación (menor = primero)
-    conditions          JSONB,                  -- NULL si usa segment_id en su lugar
-    outcome             rule_outcome NOT NULL,
-    rollout_percentage  SMALLINT,               -- solo si outcome = 'rollout' (0-100)
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  enabled Boolean @default(false)
+  default Boolean @default(false)
 
-    CONSTRAINT chk_rollout_range
-        CHECK (rollout_percentage IS NULL OR (rollout_percentage BETWEEN 0 AND 100)),
-    CONSTRAINT chk_rollout_requires_percentage
-        CHECK (outcome != 'rollout' OR rollout_percentage IS NOT NULL),
-    CONSTRAINT chk_condition_source
-        CHECK (segment_id IS NOT NULL OR conditions IS NOT NULL)
-);
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
--- Una regla se evalúa en orden dentro de su flag: el índice acelera ese query
-CREATE INDEX idx_rules_flag_priority ON rules(flag_id, priority);
-```
+  rules Rule[]
 
-### Forma del JSONB de condiciones
+  @@map("flags")
+  @@schema("engine")
+}
 
-Tanto `rules.conditions` como `segments.conditions` usan la misma forma — al final, un segmento es solo una condición reusable, así que tiene sentido que comparta estructura:
+model Rule {
+  id        String @id @db.Uuid
+  flagId    String @db.Uuid
+  segmentId String @db.Uuid
 
-```json
-{
-  "all": [
-    { "attribute": "country", "operator": "eq", "value": "CR" },
-    { "attribute": "plan", "operator": "in", "value": ["premium", "enterprise"] }
-  ]
+  priority Int     @db.Integer
+  outcome  Boolean @db.Boolean
+  rollout  Int?    @default(100) @db.SmallInt
+
+  segment Segment @relation(fields: [segmentId], references: [id])
+  flag    Flag    @relation(fields: [flagId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  @@index([flagId, priority])
+  @@map("rules")
+  @@schema("engine")
+}
+
+model Segment {
+  id   String @id @db.Uuid
+  key  String @unique @db.VarChar(100)
+  name String @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  rules      Rule[]
+  conditions Condition[]
+
+  @@map("segments")
+  @@schema("engine")
+}
+
+model Condition {
+  id        String @id @db.Uuid
+  segmentId String @db.Uuid
+
+  attribute String @db.VarChar(50)
+  operator  String @db.VarChar(20)
+  value     Json   @db.JsonB
+
+  segment Segment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  @@index([segmentId])
+  @@map("conditions")
+  @@schema("engine")
 }
 ```
 
-`all` significa que todas las condiciones internas deben cumplirse (AND). Se podría extender con `any` (OR) más adelante, pero para el alcance de este POC, `all` con una lista de comparaciones simples cubre los casos descritos en `concepts.md` sin sobre-ingeniería.
+### Sobre los índices
+
+Hay dos índices explícitos en el schema, y vale la pena justificar cada uno en términos de qué query resuelven, no solo "por si acaso":
+
+- **`Rule(flagId, priority)`** — es el índice más importante de todo el schema. Cuando se llena (o refresca) el caché en memoria, la query es "traer todas las reglas de este flag, ordenadas por prioridad" (`WHERE flagId = ? ORDER BY priority`). Sin este índice compuesto, Postgres tendría que escanear todas las filas de `rules` y ordenar en memoria; con él, la base ya entrega los resultados en el orden correcto. Es compuesto (no solo `flagId`) justamente porque la query no es solo un filtro — también necesita orden.
+- **`Condition(segmentId)`** — cuando una regla referencia un segmento, hay que traer todas sus condiciones (`WHERE segmentId = ?`). Prisma no garantiza un índice automático sobre toda foreign key en todos los casos, así que se declara explícito. El impacto es menor que el de `rules` (se esperan pocas condiciones por segmento), pero es la misma lógica: acelerar el lookup que el flujo de evaluación hace constantemente.
+
+No se agregó índice sobre `Rule.segmentId` ni sobre `Segment.key` más allá del `@unique` que ya genera uno implícitamente — `key` ya es único, así que la búsqueda por ese campo (ej. al buscar un flag o segmento por su nombre legible) ya está cubierta sin necesitar un índice adicional explícito.
 
 ## Por qué este modelo soporta bien el flujo de evaluación
 
 Vale la pena conectar el schema con el flujo de evaluación descrito en `concepts.md`, para confirmar que las tablas realmente sirven para lo que se necesita:
 
 1. **Buscar el flag por `key`** → índice único en `flags.key`, lookup directo.
-2. **Si `flags.enabled = false`** → corto circuito, ni se tocan las reglas.
-3. **Recorrer las reglas en orden** → `SELECT * FROM rules WHERE flag_id = ? ORDER BY priority` — el índice compuesto `(flag_id, priority)` hace este query rápido.
-4. **Si la regla tiene `segment_id`** → resolver las condiciones del segmento en vez de las propias.
-5. **Si la regla matchea y `outcome = 'rollout'`** → aplicar el hashing determinístico (descrito en `concepts.md`) usando `rollout_percentage` como umbral.
-6. **Si nada matchea** → usar `flags.default_outcome`.
+2. **Si `flags.enabled = false`** → corto circuito, ni se tocan las reglas. Responde `flags.default`.
+3. **Recorrer las reglas en orden** → gracias al índice `(flagId, priority)`, se obtienen ya ordenadas, sin sort adicional en memoria.
+4. **Por cada regla, resolver su segmento** → se evalúan las `Condition[]` del segmento contra el contexto (AND implícito entre todas ellas). Si el segmento no tiene condiciones, se considera que matchea siempre.
+5. **Si la regla matchea** → ¿tiene `rollout` menor a 100? Si sí, se aplica el hashing determinístico (descrito en `concepts.md`) sobre el porcentaje configurado; si el usuario cae dentro del umbral, se responde `outcome`. Si no cae dentro, se sigue evaluando la siguiente regla (como si esta no hubiera matchado).
+6. **Si ninguna regla "gana"** → se usa `flags.default`.
 
 Este flujo completo, en la práctica, se hace **una sola vez por flag** (no en cada evaluación) gracias al caché — la base de datos se consulta para poblar el caché en memoria, no en el hot path de evaluación. Eso conecta directo con lo que se explicó en `concepts.md` sobre por qué el caché no es opcional aquí.
 
@@ -123,8 +164,8 @@ Conectando con el alcance definido en `overview.md`:
 
 - **No hay tabla `users` ni `contexts`** — el contexto es transitorio, viene en el request.
 - **No hay tabla `environments`** — un solo set de flags, sin separación dev/staging/prod.
-- **No hay tabla de auditoría/historial** — no se guarda quién cambió qué ni cuándo, más allá de `updated_at`.
-- **No hay multi-tenancy** (sin `tenant_id` ni RLS) — se asume un solo cliente del motor.
+- **No hay tabla de auditoría/historial** — no se guarda quién cambió qué ni cuándo, más allá de `createdAt`/`updatedAt`.
+- **No hay multi-tenancy** (sin `tenantId` ni RLS) — se asume un solo cliente del motor.
 
 Estas ausencias son intencionales, no descuidos — son las mismas exclusiones de alcance documentadas en `overview.md`, reflejadas ahora en el schema.
 
