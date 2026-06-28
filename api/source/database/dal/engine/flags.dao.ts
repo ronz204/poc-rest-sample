@@ -1,12 +1,8 @@
 import type { Flag } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
-import type { IFlagsDao } from "@features/flags/context/flags.idao";
+import type { IFlagsDao } from "./flags.idao";
 
-import { Create } from "@features/flags/shared/queries/create.query";
-import { Delete } from "@features/flags/shared/queries/delete.query";
-import { Update } from "@features/flags/shared/queries/update.query";
-import { Enable } from "@features/flags/shared/queries/enable.query";
-import { Disable } from "@features/flags/shared/queries/disable.query";
+import { Create, Update, Enable, Disable, Delete } from "./flags.write";
 
 export class FlagsDao implements IFlagsDao {
   constructor(private readonly db: PrismaClient) {};
@@ -14,7 +10,7 @@ export class FlagsDao implements IFlagsDao {
   public async create(args: Create.Args): Promise<Flag> {
     return await this.db.flag.create(Create.query(args));
   };
-  
+
   public async update(args: Update.Args): Promise<Flag> {
     return await this.db.flag.update(Update.query(args));
   };
