@@ -5,12 +5,12 @@ import type { FlagDeleteArgs } from "@prisma/models";
 
 export namespace Create {
   export function query(flag: Flag) {
-    const args = flag.primitives();
     return {
       data: {
-        key: args.key,
-        name: args.name,
-        short: args.short,
+        id: flag.id,
+        key: flag.key,
+        name: flag.name,
+        short: flag.short,
       },
     } satisfies FlagCreateArgs;
   };
@@ -18,14 +18,13 @@ export namespace Create {
 
 export namespace Update {
   export function query(flag: Flag) {
-    const args = flag.primitives();
     return {
-      where: { key: args.key },
+      where: { key: flag.key },
       data: {
-        name: args.name,
-        short: args.short,
-        default: args.default,
-        enabled: args.enabled,
+        name: flag.name,
+        short: flag.short,
+        default: flag.default,
+        enabled: flag.enabled,
       },
     } satisfies FlagUpdateArgs;
   };
@@ -33,9 +32,8 @@ export namespace Update {
 
 export namespace Remove {
   export function query(flag: Flag) {
-    const args = flag.primitives();
     return {
-      where: { key: args.key },
+      where: { key: flag.key },
     } satisfies FlagDeleteArgs;
   };
 };
