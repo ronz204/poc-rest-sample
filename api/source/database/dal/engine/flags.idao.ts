@@ -1,10 +1,7 @@
-import type { Flag } from "@prisma/client";
-import type { Create, Update, Enable, Disable, Delete } from "./flags.write";
+import type { Flag } from "@context/engine/flags.aggregate";
 
-export interface IFlagsDao {
-  create(args: Create.Args): Promise<Flag>;
-  update(args: Update.Args): Promise<Flag>;
-  enable(args: Enable.Args): Promise<Flag>;
-  remove(args: Delete.Args): Promise<Flag>;
-  disable(args: Disable.Args): Promise<Flag>;
+export interface IFlagRepository {
+  create(flag: Flag): Promise<void>;
+  update(flag: Flag): Promise<void>;
+  remove(flag: Flag): Promise<void>;
 };

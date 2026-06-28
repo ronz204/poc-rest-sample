@@ -35,6 +35,7 @@
     "paths": {
       "@env": ["./source/env.ts"],
       "@shared/*": ["./source/shared/*"],
+      "@context/*": ["./source/context/*"],
       "@plugins/*": ["./source/plugins/*"],
       "@prisma/*": ["./prisma/generated/*"],
       "@features/*": ["./source/features/*"],

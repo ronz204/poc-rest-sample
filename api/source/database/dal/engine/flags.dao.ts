@@ -1,29 +1,21 @@
-import type { Flag } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
-import type { IFlagsDao } from "./flags.idao";
+import type { IFlagRepository } from "./flags.idao";
 
-import { Create, Update, Enable, Disable, Delete } from "./flags.write";
+import { Flag } from "@context/engine/flags.aggregate";
+import { Create, Update, Remove } from "./flags.write";
 
-export class FlagsDao implements IFlagsDao {
+export class FlagRepository implements IFlagRepository {
   constructor(private readonly db: PrismaClient) {};
 
-  public async create(args: Create.Args): Promise<Flag> {
-    return await this.db.flag.create(Create.query(args));
+  public async create(flag: Flag): Promise<void> {
+    await this.db.flag.create(Create.query(flag));
   };
 
-  public async update(args: Update.Args): Promise<Flag> {
-    return await this.db.flag.update(Update.query(args));
+  public async update(flag: Flag): Promise<void> {
+    await this.db.flag.update(Update.query(flag));
   };
 
-  public async enable(args: Enable.Args): Promise<Flag> {
-    return await this.db.flag.update(Enable.query(args));
-  };
-
-  public async disable(args: Disable.Args): Promise<Flag> {
-    return await this.db.flag.update(Disable.query(args));
-  };
-
-  public async remove(args: Delete.Args): Promise<Flag> {
-    return await this.db.flag.delete(Delete.query(args));
+  public async remove(flag: Flag): Promise<void> {
+    await this.db.flag.delete(Remove.query(flag));
   };
 };
