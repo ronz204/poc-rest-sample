@@ -2,6 +2,64 @@
 
 > Este documento traduce el schema de Prisma (`database.md` / `engine.prisma`) a un **modelo de dominio rico**: Aggregates, Entities y Value Objects. El punto de partida es una distinción importante: el modelo de persistencia y el modelo de dominio **no son el mismo objeto**. Las tablas son una proyección del dominio para fines de almacenamiento; el dominio es donde vive la lógica de negocio, las invariantes, y el comportamiento. Este documento es el puente entre ambos.
 
+## Fundamentos DDD: los bloques de construcción del dominio
+
+Antes de entrar al modelo concreto, conviene tener claros los tres bloques de construcción que DDD usa para representar el dominio. No son abstracciones académicas — son respuestas a preguntas de negocio muy concretas.
+
+### Entity
+
+Un objeto con **identidad que persiste en el tiempo**, independiente de sus atributos. Si cambias cualquier campo de una Entity, sigue siendo "la misma" instancia — se la reconoce por su `id`, no por sus valores.
+
+La pregunta que decide si algo es Entity: *¿necesitamos rastrear "esta instancia en particular" a lo largo del tiempo? ¿El negocio distingue entre dos objetos con los mismos atributos pero historia diferente?*
+
+```
+// Entity: si cambias el nombre, sigue siendo el mismo flag
+Flag { id: "abc", name: "dark-mode" }  →  Flag { id: "abc", name: "night-mode" }
+// Misma instancia, atributo modificado — el id es el que manda
+```
+
+### Value Object (VO)
+
+Un objeto definido **por sus atributos, no por su identidad**. No tiene `id` relevante en el dominio. Dos VOs con los mismos atributos son intercambiables — son el mismo valor. Son siempre **inmutables**: en lugar de mutar un VO, se reemplaza por uno nuevo.
+
+La pregunta que decide si algo es VO: *¿Dos instancias con los mismos atributos son la misma cosa? ¿El negocio nunca necesita decir "esta condición concreta, con su historia"?*
+
+```
+// VO: dos rollouts al 50% son idénticos — no importa cuál de los dos es
+Rollout(50) === Rollout(50)  // intercambiables
+
+// VO: inmutable — no se muta, se reemplaza
+const r1 = Rollout(50)
+const r2 = Rollout(75)  // nuevo VO, r1 sigue intacto
+```
+
+Los VOs también encapsulan sus propias **invariantes de construcción**: un `Rollout` que no está entre 0-100 no puede existir — falla al construirse, no después.
+
+### Aggregate
+
+Un **cluster de Entities y VOs que se trata como una unidad** para efectos de consistencia y persistencia. La regla fundamental: las invariantes de negocio que afectan a varios objetos a la vez solo pueden garantizarse si alguien ve el conjunto completo — ese alguien es el Aggregate.
+
+Cada Aggregate tiene exactamente un **Aggregate Root**: la Entity de entrada. Nada externo puede acceder a los objetos internos del Aggregate salvo a través del Root. El Root es quien garantiza que las invariantes del conjunto siempre se cumplan.
+
+```
+Aggregate: Flag (root)
+├── Entity interna: Rule        ← solo accesible via Flag, nunca directamente
+│     └── Value Object: Rollout
+└── Value Object: FlagKey
+```
+
+**Tres reglas de oro del Aggregate:**
+
+1. **Transacción = un Aggregate.** Todo lo que cambia en una operación de negocio debe vivir dentro de un solo Aggregate. Si una operación necesita modificar dos Aggregates a la vez, probablemente el diseño de límites está mal.
+2. **Referencias entre Aggregates solo por id.** Un Aggregate nunca guarda el objeto completo de otro Aggregate — solo su identificador. Si necesita datos del otro, los busca por separado.
+3. **El Root es el único punto de entrada.** Nada externo modifica una Entity interna directamente. Toda mutación pasa por métodos del Root, que verifica las invariantes del conjunto antes y después.
+
+### Por qué importa la distinción
+
+La distinción Entity / VO / Aggregate no es terminología — es una forma de razonar sobre **qué puede cambiar independientemente, qué necesita consistencia conjunta, y dónde vive cada regla de negocio**. Un campo que parece "solo un string" puede necesitar ser un VO si tiene reglas de validez propias. Un objeto que parece "solo un registro" puede necesitar ser un Aggregate si sus partes deben mutar de forma atómica.
+
+---
+
 ## El criterio que define todo lo demás
 
 Antes de asignar "Aggregate", "Entity" o "Value Object" a cada tabla, hay una sola pregunta que decide todo:
