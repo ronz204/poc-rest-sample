@@ -6,11 +6,14 @@ import { ScalarPlugin } from "@plugins/scalar.plugin";
 import { HealthPlugin } from "@plugins/health.plugin";
 import { OriginsPlugin } from "@plugins/origins.plugin";
 
+import { PrismaWire } from "@database/prisma.wiring";
+
 const app = new Elysia({ prefix: "/api" })
   .use(OriginsPlugin)
   .use(ScalarPlugin)
   .use(HealthPlugin)
   .use(TokenPlugin)
+  .use(PrismaWire)
   .listen(env.APP_PORT);
 
 const url = `http://${app.server?.hostname}:${app.server?.port}`;

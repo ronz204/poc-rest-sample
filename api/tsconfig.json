@@ -38,6 +38,7 @@
       "@plugins/*": ["./source/plugins/*"],
       "@prisma/*": ["./prisma/generated/*"],
       "@features/*": ["./source/features/*"],
+      "@database/*": ["./source/database/*"],
     },
   }
 }
