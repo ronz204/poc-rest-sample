@@ -1,7 +1,10 @@
+import type {
+  FlagCreateArgs,
+  FlagUpdateArgs,
+  FlagDeleteArgs,
+} from "@prisma/models";
+
 import { Flag } from "@context/engine/flags.aggregate";
-import type { FlagCreateArgs } from "@prisma/models";
-import type { FlagUpdateArgs } from "@prisma/models";
-import type { FlagDeleteArgs } from "@prisma/models";
 
 export namespace Create {
   export function query(flag: Flag) {

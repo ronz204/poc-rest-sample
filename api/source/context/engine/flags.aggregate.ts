@@ -22,6 +22,10 @@ export class Flag {
     this.props.enabled = false;
   };
 
+  public primitives(): Props {
+    return structuredClone(this.props);
+  };
+
   public static hydrate(props: Props): Flag {
     return new Flag(props)
   };
