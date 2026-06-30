@@ -1,7 +1,10 @@
 import type { Flag } from "@context/engine/flags.aggregate";
 
-export interface IFlagRepository {
-  create(flag: Flag): Promise<void>;
-  update(flag: Flag): Promise<void>;
-  remove(flag: Flag): Promise<void>;
+export interface IFlagsDao {
+  create(flag: Flag): Promise<Flag>;
+  update(flag: Flag): Promise<Flag>;
+  remove(flag: Flag): Promise<Flag>;
+
+  unique(key: string): Promise<Flag | null>;
+  collect(): Promise<Flag[]>;
 };
