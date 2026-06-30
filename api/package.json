@@ -4,6 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "test": "vitest",
     "start:prod": "bun ./source/boot.ts",
     "start:dev": "bun --hot ./source/boot.ts",
     "prisma:generate": "bunx --bun prisma generate",
