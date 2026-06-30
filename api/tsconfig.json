@@ -1,4 +1,5 @@
 {
+  "include": ["source/**/*", "testing/**/*"],
   "compilerOptions": {
     // Environment - Latest JavaScript features
     "lib": ["ESNext"],
@@ -41,5 +42,5 @@
       "@features/*": ["./source/features/*"],
       "@database/*": ["./source/database/*"],
     },
-  }
+  },
 }
