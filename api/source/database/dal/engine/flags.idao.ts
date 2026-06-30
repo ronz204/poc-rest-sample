@@ -1,4 +1,5 @@
 import type { Flag } from "@context/engine/flags.aggregate";
+import { Collect } from "./flags.read";
 
 export interface IFlagsDao {
   create(flag: Flag): Promise<Flag>;
@@ -6,5 +7,5 @@ export interface IFlagsDao {
   remove(flag: Flag): Promise<Flag>;
 
   unique(key: string): Promise<Flag | null>;
-  collect(): Promise<Flag[]>;
+  collect(args: Collect.Args): Promise<Flag[]>;
 };

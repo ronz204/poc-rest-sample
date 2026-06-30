@@ -28,8 +28,8 @@ export class FlagsDao implements IFlagsDao {
     return row ? Flag.hydrate(row) : null;
   };
 
-  public async collect(): Promise<Flag[]> {
-    const rows = await this.db.flag.findMany(Collect.query());
+  public async collect(args: Collect.Args): Promise<Flag[]> {
+    const rows = await this.db.flag.findMany(Collect.query(args));
     return rows.map((row) => Flag.hydrate(row));
   };
 };
