@@ -1,4 +1,4 @@
-import type { Flag } from "@context/engine/flags.aggregate";
+import type { Flag } from "@context/engine/flag.aggregate";
 import { Collect } from "./flags.read";
 
 export interface IFlagsDao {

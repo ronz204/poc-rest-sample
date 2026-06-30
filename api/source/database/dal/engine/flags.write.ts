@@ -1,4 +1,4 @@
-import { Flag } from "@context/engine/flags.aggregate";
+import { Flag } from "@context/engine/flag.aggregate";
 import type { FlagCreateArgs, FlagUpdateArgs, FlagDeleteArgs } from "@prisma/models";
 
 export namespace Create {

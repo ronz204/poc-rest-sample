@@ -1,5 +1,5 @@
-import { FlagErrors, type FlagError } from "./flags.exceptions";
-import type { CreateAction, UpdateAction } from "./flags.interfaces";
+import { FlagErrors, type FlagError } from "./flag.exceptions";
+import type { CreateAction, UpdateAction } from "./flag.interfaces";
 import { Success, Failure, type Result } from "@shared/helpers/result.helper";
 
 interface Row {

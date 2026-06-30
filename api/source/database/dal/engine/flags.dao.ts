@@ -1,7 +1,7 @@
 import type { IFlagsDao } from "./flags.idao";
 import type { PrismaClient } from "@prisma/client";
 
-import { Flag } from "@context/engine/flags.aggregate";
+import { Flag } from "@context/engine/flag.aggregate";
 import { Create, Update, Remove } from "./flags.write";
 import { Unique, Collect } from "./flags.read";
 
